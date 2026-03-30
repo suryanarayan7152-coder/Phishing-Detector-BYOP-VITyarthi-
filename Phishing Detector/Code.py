@@ -1,0 +1,99 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+import os
+
+
+# this function basically creates some fake phishing-like data
+def make_fake_data():
+    print("Generating synthetic phishing dataset... (might take a sec)")
+
+    np.random.seed(42)  # keeping it fixed so results don't jump around every run
+    total = 1000  # number of samples (could tweak this later maybe)
+
+    # building feature columns one by one (felt easier to debug this way)
+    url_len = np.random.randint(20, 150, total)
+    at_symbol = np.random.choice([0, 1], total, p=[0.95, 0.05])
+    ip_addr = np.random.choice([0, 1], total, p=[0.90, 0.10])
+    hyphen_count = np.random.randint(0, 5, total)
+    https_flag = np.random.choice([0, 1], total, p=[0.4, 0.6])
+
+    # putting everything into a dataframe
+    df = pd.DataFrame({
+        'url_length': url_len,
+        'has_at_symbol': at_symbol,
+        'has_ip_address': ip_addr,
+        'num_hyphens': hyphen_count,
+        'is_https': https_flag
+    })
+
+    # quick and dirty scoring logic (not super scientific tbh)
+    score = (df['url_length'] > 75).astype(int)
+    score = score + (df['has_at_symbol'] * 2)
+
+    # adding more weights (probably overthinking this part)
+    score = score + (df['has_ip_address'] * 3)
+    score = score + df['num_hyphens']
+
+    # HTTPS should reduce suspicion (hopefully makes sense)
+    score = score - (df['is_https'] * 2)
+
+    # final label
+    df['is_phishing'] = (score > 1).astype(int)
+
+    # saving to file so we don't regenerate every time
+    df.to_csv('phishing_data.csv', index=False)
+
+    return df
+
+
+def run_pipeline():
+    print("\n--- Starting Phishing Detection Pipeline ---")
+
+    file_name = 'phishing_data.csv'
+
+    # check if file exists (I always forget this step otherwise...)
+    if os.path.exists(file_name):
+        print("Loaded existing dataset.")
+        data_df = pd.read_csv(file_name)
+    else:
+        data_df = make_fake_data()
+
+    # splitting features + labels
+    X_data = data_df.drop('is_phishing', axis=1)
+    y_data = data_df['is_phishing']
+
+    # splitting train/test (could maybe stratify, but leaving for now)
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X_data, y_data, test_size=0.2, random_state=42
+    )
+
+    print("Training Random Forest Classifier...")
+
+    # using default-ish params (might tune later if needed)
+    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+    # fitting model
+    rf_model.fit(X_tr, y_tr)
+
+    print("\n--- Model Evaluation ---")
+
+    preds = rf_model.predict(X_te)
+
+    # accuracy calculation (split into steps just for readability)
+    acc = accuracy_score(y_te, preds)
+    acc_percent = acc * 100
+
+    print(f"Accuracy: {acc_percent:.2f}%\n")
+
+    print("Classification Report:")
+    print(classification_report(y_te, preds))
+
+    # debug idea (keeping for later maybe)
+    # print("Feature importances:", rf_model.feature_importances_)
+
+
+if __name__ == "__main__":
+    run_pipeline()
